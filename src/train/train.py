@@ -115,13 +115,16 @@ if __name__ == "__main__":
     print(f"\nLogits shape: {logits.shape}")
     print(f"Loss: {loss.item():.4f}")
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"\nUsing device: {device}")
+
     print("\nStarting training run...")
     trained_model = train(
         model, data,
-        batch_size=32, seq_len=64, num_steps=120,
-        max_lr=3e-4, min_lr=3e-5, warmup_steps=20,
-        device="cpu",
-        checkpoint_every=50
+        batch_size=32, seq_len=128, num_steps=5000,
+        max_lr=3e-4, min_lr=3e-5, warmup_steps=100,
+        device=device,
+        checkpoint_every=500
     )
     print("\nTraining loop finished.")
 
