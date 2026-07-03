@@ -43,7 +43,7 @@ def get_batch(data, batch_size, seq_len, device):
     inputs = torch.stack([data[i : i + seq_len] for i in start_indices])
     targets = torch.stack([data[i + 1 : i + seq_len + 1] for i in start_indices])
 
-    return inputs, targets
+    return inputs.to(device), targets.to(device)
 
 def get_lr(step, warmup_steps, max_steps, max_lr, min_lr):
     """
