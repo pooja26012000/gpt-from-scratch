@@ -1,6 +1,7 @@
 # src/model/gpt.py
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from src.model.transformer_block import TransformerBlock
 
@@ -33,7 +34,7 @@ class GPT(nn.Module):
         self.final_ln = nn.LayerNorm(embedding_dim)
         self.output_proj = nn.Linear(embedding_dim, vocab_size)
 
-    def forward(self, token_ids):
+    def forward(self, token_ids, targets=None):
         batch_size, seq_len = token_ids.shape
         token_embeds = self.token_embedding(token_ids)
         positions = torch.arange(seq_len, device=token_ids.device)
@@ -45,7 +46,15 @@ class GPT(nn.Module):
 
         x = self.final_ln(x)
         logits = self.output_proj(x)
-        return logits
+
+        loss = None
+        if targets is not None:
+            batch_size, seq_len, vocab_size = logits.shape
+            logits_flat = logits.view(batch_size * seq_len, vocab_size)
+            targets_flat = targets.view(batch_size * seq_len)
+            loss = F.cross_entropy(logits_flat, targets_flat)
+
+        return logits, loss
     
 if __name__ == "__main__":
     BATCH_SIZE = 4
@@ -53,12 +62,14 @@ if __name__ == "__main__":
     fake_token_ids = torch.randint(0, VOCAB_SIZE, (BATCH_SIZE, SEQ_LEN))
 
     model = GPT(VOCAB_SIZE, EMBEDDING_DIM, NUM_HEADS, NUM_LAYERS, MAX_SEQ_LEN)
-    logits = model(fake_token_ids)
+    # logits = model(fake_token_ids)
 
+    logits, loss = model(fake_token_ids)
     print(f"Input shape: {fake_token_ids.shape}")
     print(f"Logits shape: {logits.shape}")
     assert logits.shape == (BATCH_SIZE, SEQ_LEN, VOCAB_SIZE)
     print("Shape check OK.")
+    print(f"Loss (no targets provided): {loss}")  # should print None
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f"\nTotal parameters: {total_params:,}")
