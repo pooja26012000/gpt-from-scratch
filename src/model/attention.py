@@ -55,6 +55,31 @@ class SingleHeadAttention(nn.Module):
         attention_weights = F.softmax(scores, dim=-1)
         output = attention_weights @ V
         return output
+    
+class MultiHeadAttention(nn.Module):
+    """
+    Runs multiple SingleHeadAttention instances in parallel, each
+    operating on a smaller slice of the embedding dimension, then
+    concatenates their outputs and passes through an output projection.
+
+    Input: [batch_size, seq_len, embedding_dim]
+    Output: [batch_size, seq_len, embedding_dim]
+    """
+    def __init__(self, embedding_dim, num_heads, max_seq_len):
+        super().__init__()
+        assert embedding_dim % num_heads == 0, "embedding_dim must be divisible by num_heads"
+        head_dim = embedding_dim // num_heads
+
+        self.heads = nn.ModuleList([
+            SingleHeadAttention(embedding_dim, head_dim, max_seq_len)
+            for _ in range(num_heads)
+        ])
+        self.output_proj = nn.Linear(embedding_dim, embedding_dim)
+
+    def forward(self, x):
+        head_outputs = [head(x) for head in self.heads]
+        concatenated = torch.cat(head_outputs, dim=-1)
+        return self.output_proj(concatenated)
 
 
 if __name__ == "__main__":
@@ -80,3 +105,10 @@ if __name__ == "__main__":
     scores = scores.masked_fill(mask == 0, float('-inf'))
     weights = F.softmax(scores, dim=-1)
     print(f"\nFirst token's attention weights (should be one-hot on position 0):\n{weights[0][0]}")
+
+    NUM_HEADS = 4
+    multi_head = MultiHeadAttention(EMBEDDING_DIM, NUM_HEADS, max_seq_len=MAX_SEQ_LEN)
+    mh_output = multi_head(fake_input)
+    print(f"\nMultiHeadAttention output shape: {mh_output.shape}")
+    assert mh_output.shape == fake_input.shape
+    print("Multi-head shape check OK.")
