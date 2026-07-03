@@ -3,6 +3,8 @@ import json
 import torch
 import torch.optim as optim
 
+import math
+
 from src.data.tokenizer import extract_movetext, encode, build_full_vocab, build_stoi_itos
 from src.model.gpt import GPT
 
@@ -43,13 +45,35 @@ def get_batch(data, batch_size, seq_len, device):
 
     return inputs, targets
 
-def train(model, data, batch_size, seq_len, num_steps, learning_rate, device):
+def get_lr(step, warmup_steps, max_steps, max_lr, min_lr):
+    """
+    Linear warmup for `warmup_steps`, then cosine decay down to
+    `min_lr` by `max_steps`.
+    """
+    if step < warmup_steps:
+        return max_lr * (step + 1) / warmup_steps
+
+    if step > max_steps:
+        return min_lr
+
+    decay_ratio = (step - warmup_steps) / (max_steps - warmup_steps)
+    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+    return min_lr + coeff * (max_lr - min_lr)
+
+def save_checkpoint(model, path):
+    torch.save(model.state_dict(), path)
+    print(f"Checkpoint saved to {path}")
+
+def train(model, data, batch_size, seq_len, num_steps, max_lr, min_lr, warmup_steps, device, checkpoint_every=500):
     model.to(device)
-    optimizer = optim.AdamW(model.parameters(), lr=learning_rate)
+    optimizer = optim.AdamW(model.parameters(), lr=max_lr)
 
     for step in range(num_steps):
-        xb, yb = get_batch(data, batch_size, seq_len, device)
+        lr = get_lr(step, warmup_steps, num_steps, max_lr, min_lr)
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
 
+        xb, yb = get_batch(data, batch_size, seq_len, device)
         logits, loss = model(xb, yb)
 
         optimizer.zero_grad()
@@ -57,10 +81,13 @@ def train(model, data, batch_size, seq_len, num_steps, learning_rate, device):
         optimizer.step()
 
         if step % 50 == 0:
-            print(f"Step {step}/{num_steps} — loss: {loss.item():.4f}")
+            print(f"Step {step}/{num_steps} — loss: {loss.item():.4f} — lr: {lr:.6f}")
 
+        if step > 0 and step % checkpoint_every == 0:
+            save_checkpoint(model, f"checkpoints/gpt_step_{step}.pt")
+
+    save_checkpoint(model, "checkpoints/gpt_final.pt")
     return model
-
 
 if __name__ == "__main__":
     base_vocab, merges = load_trained_tokenizer("data/processed/tokenizer.json")
@@ -91,8 +118,10 @@ if __name__ == "__main__":
     print("\nStarting training run...")
     trained_model = train(
         model, data,
-        batch_size=32, seq_len=64, num_steps=200,
-        learning_rate=3e-4, device="cpu"
+        batch_size=32, seq_len=64, num_steps=120,
+        max_lr=3e-4, min_lr=3e-5, warmup_steps=20,
+        device="cpu",
+        checkpoint_every=50
     )
     print("\nTraining loop finished.")
 
