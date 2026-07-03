@@ -129,6 +129,6 @@ if __name__ == "__main__":
     print("\nTraining loop finished.")
 
      # Quick before/after check: run one more forward pass post-training
-    xb_check, yb_check = get_batch(data, batch_size=32, seq_len=64, device="cpu")
+    xb_check, yb_check = get_batch(data, batch_size=32, seq_len=64, device=device)
     _, final_loss = trained_model(xb_check, yb_check)
     print(f"Loss on a fresh batch after training: {final_loss.item():.4f}")
