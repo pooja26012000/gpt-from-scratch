@@ -6,6 +6,20 @@ A GPT-style transformer built **completely from scratch in PyTorch** — no Hugg
 
 ---
 
+## Live Demo
+
+Backend API is live on Google Cloud Run:
+**https://gpt-chess-backend-513208374732.us-central1.run.app**
+
+Try it directly:
+\`\`\`bash
+curl -X POST https://gpt-chess-backend-513208374732.us-central1.run.app/generate \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "1. e4", "strategy": "top_k", "max_new_tokens": 30}'
+\`\`\`
+
+*(A frontend with a live visual board is in progress — see [What's next](#whats-next).)*
+
 ## Table of contents
 
 - [Why chess](#why-chess)
