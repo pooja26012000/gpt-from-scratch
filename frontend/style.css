@@ -154,6 +154,10 @@ section#demo{padding:70px 24px 40px;}
 .speed-control{display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:.8rem;color:var(--ivory-dim);}
 .speed-control input[type=range]{flex:1;accent-color:var(--brass);}
 
+.flag.flag-success{
+  border-color:#6ba05a;color:#a8d19a;background:rgba(107,160,90,0.1);
+}
+
 section#stats{padding:40px 24px 70px;}
 .stat-strip{
   display:grid;grid-template-columns:repeat(4,1fr);gap:16px;

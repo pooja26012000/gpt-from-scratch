@@ -111,13 +111,14 @@ btnGenerate.addEventListener('click', async () => {
   btnGenerate.disabled = true;
   btnGenerate.textContent = 'Generating…';
   illegalFlag.style.display = 'none';
+  illegalFlag.classList.remove('flag-success');
   setPlaybackEnabled(false);
   board.position('start');
 
   const body = {
     prompt: document.getElementById('prompt').value || '1. e4',
     strategy: strategyEl.value,
-    max_new_tokens: 40,
+    max_new_tokens: 70,
     temperature: parseFloat(document.getElementById('temperature').value),
     k: parseInt(document.getElementById('k').value),
     p: parseFloat(document.getElementById('p').value)
@@ -146,6 +147,10 @@ btnGenerate.addEventListener('click', async () => {
     if (firstIllegal !== null){
       illegalFlag.style.display = 'block';
       illegalFlag.textContent = `Model played an illegal move at move ${firstIllegal + 1} ("${allMoves[firstIllegal]}") — generation stopped there. This is expected: the model has no explicit board-state tracking.`;
+    } else {
+      illegalFlag.style.display = 'block';
+      illegalFlag.classList.add('flag-success');
+      illegalFlag.textContent = `All ${legalMoves.length} generated moves were legal — the requested move limit was reached with no errors.`;
     }
 
     if (legalMoves.length > 0){
