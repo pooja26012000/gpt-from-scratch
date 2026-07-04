@@ -2,23 +2,24 @@
 
 A GPT-style transformer built **completely from scratch in PyTorch** — no Hugging Face, no pre-built transformer layers, no shortcuts — trained on real human chess games to generate move sequences, one token at a time.
 
-> **The pitch:** I built a mini version of ChatGPT, but instead of learning language, it learned chess. Same core mechanism (predict the next token, given everything so far) — just applied to move notation instead of English. Every piece — the tokenizer, the attention mechanism, the training loop, the sampling strategies — was implemented from raw math, not imported from a library.
-
----
+> **The pitch:** I built a mini version of ChatGPT, but instead of learning language, it learned chess. Same core mechanism (predict the next token, given everything so far) — just applied to move notation instead of English. Every piece — the tokenizer, the attention mechanism, the training loop, the sampling strategies, and the deployed app around it — was implemented from raw math, not imported from a library.
 
 ## Live Demo
 
-Backend API is live on Google Cloud Run:
+**Try it now: https://gpt-chess-from-scratch.vercel.app**
+
+Enter an opening prompt, pick a sampling strategy, and watch the model generate a chess game move-by-move on an animated board. A live scoresheet fills in alongside the board, and generation is checked against a real chess rules engine (`chess.js`) in real time — if the model plays an illegal move, the board stops there and the page explains why, directly surfacing the same legality findings reported in the [Results](#results) section below rather than hiding them.
+
+Backend API (called directly by the frontend):
 **https://gpt-chess-backend-513208374732.us-central1.run.app**
 
-Try it directly:
-\`\`\`bash
+```bash
 curl -X POST https://gpt-chess-backend-513208374732.us-central1.run.app/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "1. e4", "strategy": "top_k", "max_new_tokens": 30}'
-\`\`\`
+  -d '{"prompt": "1. e4", "strategy": "top_k", "max_new_tokens": 40, "k": 10}'
+```
 
-*(A frontend with a live visual board is in progress — see [What's next](#whats-next).)*
+---
 
 ## Table of contents
 
@@ -36,11 +37,11 @@ curl -X POST https://gpt-chess-backend-513208374732.us-central1.run.app/generate
   - [Stage 8 — Assembling GPT + training](#stage-8--assembling-gpt--training)
   - [Stage 9 — Generation](#stage-9--generation)
   - [Stage 10 — Evaluation](#stage-10--evaluation)
+- [Deployment — backend + frontend](#deployment--backend--frontend)
 - [Results](#results)
 - [Honest limitations](#honest-limitations)
-- [What's next](#whats-next)
+- [Future scope](#future-scope)
 - [How to run this yourself](#how-to-run-this-yourself)
-- [Interview talking points](#interview-talking-points)
 
 ---
 
@@ -50,7 +51,7 @@ Most "I built an AI" portfolio projects call an existing model's API or fine-tun
 
 Chess also gives two things a language dataset doesn't:
 - **A live, visual demo** — generated games can be rendered on an actual board, not just printed as text.
-- **An objective, external correctness check** — `python-chess` can verify whether generated moves are actually legal, giving a second evaluation axis beyond training loss.
+- **An objective, external correctness check** — `python-chess` (and, in the live demo, `chess.js`) can verify whether generated moves are actually legal, giving a second evaluation axis beyond training loss.
 
 This is **not** a chess engine. It has no search, no lookahead, no explicit rules knowledge, and no concept of "winning." It is a pure next-token predictor that happens to have been trained on chess notation instead of prose — and its strengths and failures below are reported honestly, including where it breaks down.
 
@@ -105,6 +106,8 @@ gpt-from-scratch/
 │   ├── data/      # download + clean data, tokenizer
 │   ├── model/     # embeddings, attention, transformer block, GPT, generation
 │   └── train/     # training loop, evaluation
+├── backend/       # FastAPI service, Dockerfile
+├── frontend/      # static HTML/CSS/JS demo site
 ├── data/          # gitignored — raw.pgn, tokenizer.json
 ├── checkpoints/   # gitignored — trained model weights
 ├── requirements.txt
@@ -222,6 +225,24 @@ This directly caught a real, interesting failure mode: a generated line included
 
 ---
 
+## Deployment — backend + frontend
+
+The trained model isn't just a local script — it's wrapped, containerized, and deployed as a real, publicly reachable product.
+
+**Backend (`backend/`)**
+- A thin FastAPI service (`backend/main.py`) wraps the existing `generate.py` functions behind a `POST /generate` endpoint and a `GET /health` check — no ML logic duplicated, just an HTTP interface around code that already worked.
+- The model and tokenizer load **once, at server startup** (not per-request), since reloading a 1.2M-parameter model on every call would be needlessly slow.
+- Containerized with Docker. The trained checkpoint (`gpt_final.pt`) and tokenizer (`tokenizer.json`) are gitignored — since Cloud Run has no access to the local filesystem, both are explicitly `COPY`'d into the image at build time, baking the trained artifacts directly into the deployable unit.
+- Deployed on **Google Cloud Run**. One real snag worth documenting: the first build produced an ARM64 image (default on Apple Silicon), which Cloud Run rejected outright — Cloud Run requires `linux/amd64`. Fixed by rebuilding with `docker buildx build --platform linux/amd64`, a good reminder that "it built successfully" isn't the same as "it's compatible with the target platform."
+
+**Frontend (`frontend/`)**
+- Plain HTML/CSS/JS, no framework, no build step — deliberately kept simple enough to deploy to Vercel in seconds per change.
+- `chessboard.js` renders the board (recolored to match the site's palette rather than default board colors); `chess.js` independently validates each generated move and drives the animated playback, which is also what powers the live illegal-move detection.
+- CORS is enabled on the backend (`allow_origins=["*"]`) specifically because the frontend (Vercel) and backend (Cloud Run) live on different domains — browsers block cross-origin requests by default without this.
+- A visual design pass avoided generic "AI demo" aesthetics in favor of a palette and typography grounded in actual chess materials (wood-toned board, tournament-scoresheet-style move ledger, brass accents) rather than a default dark-mode dashboard look.
+
+---
+
 ## Results
 
 ### Legality evaluation, 5,000 vs. 10,000 training steps
@@ -253,11 +274,30 @@ This directly caught a real, interesting failure mode: a generated line included
 
 ---
 
-## What's next
+## Future scope
 
-- FastAPI backend wrapping the trained model, Dockerized, deployed on Google Cloud Run
-- Static frontend with a live, move-by-move chess board visualization, deployed on Vercel
-- Full write-up of the deployment architecture and a live demo link
+Everything below is a genuine, considered next step — not a vague wishlist. Each one ties back to something learned while building and evaluating this project.
+
+**Scale up training (cheapest, highest-confidence improvement)**
+The 5K-vs-10K-step comparison in [Results](#results) showed every sampling strategy improve, with no sign of plateauing — the strongest single piece of evidence in this project that more training steps would keep helping. Pushing to 20K–50K steps is a near-zero-cost experiment with the existing pipeline; the same applies to training on more than 15,000 games.
+
+**A larger model**
+4 layers / 4 heads / 128-dim embeddings (1.2M params) was chosen specifically to train fast on a free Colab T4. Doubling embedding dimension or block count is a moderate-cost change — more representational capacity to distinguish similar-looking move sequences that currently get confused (e.g., the `dxe5`-after-the-d-pawn-was-already-captured failure mode documented in [Stage 10](#stage-10--evaluation)).
+
+**Explicit board-state conditioning**
+The single largest source of illegal moves is that the model has no notion of the actual board — only move-token patterns. A genuinely different architectural direction (not just "more of the same") would be feeding the model an auxiliary board representation (e.g., a FEN-derived embedding) alongside the move history, so it has to learn far less about board state implicitly. This is a real research direction, not a small tweak — likely out of scope for a from-scratch project on a tight timeline, but the correct next architectural question.
+
+**Constrained decoding**
+As discussed in [Honest limitations](#honest-limitations), filtering candidate tokens through `python-chess` at generation time would push legality to ~100% trivially. Deliberately not used for the core evaluation, since it measures the rules engine's correctness rather than the model's — but it's a legitimate, real production technique worth using in a context where reliability matters more than measuring the model itself.
+
+**Exposing more controls in the demo**
+`max_new_tokens` is currently fixed per request. Making generation length adjustable in the UI (with a clear tradeoff note — longer generations are more likely to eventually hit an illegal move, per the measured legality rates) would let visitors explore that tradeoff themselves instead of just reading about it.
+
+**Faster inference / reduced cold starts**
+Cloud Run's free-tier scales to zero when idle, so the first request after inactivity can take 10–30+ seconds. A minimum-instance configuration (small ongoing cost) or a lighter-weight serving setup would remove this for a production-quality demo.
+
+**Multi-game / tournament mode**
+Generating and comparing several games side-by-side (e.g., one per sampling strategy, run simultaneously) would make the legality-rate differences in [Results](#results) visible and interactive rather than something you have to read in a table.
 
 ---
 
@@ -281,14 +321,10 @@ python3 -m src.model.generate
 
 # evaluate legality across sampling strategies
 python3 -m src.train.evaluate
+
+# run the backend locally
+uvicorn backend.main:app --reload
+
+# run the frontend locally
+cd frontend && python3 -m http.server 8000
 ```
-
----
-
-## Interview talking points
-
-- *"Why chess instead of the usual text dataset?"* — proves the transformer architecture is genuinely general-purpose, not language-specific; gives an objective, external correctness check (legality) beyond training loss alone.
-- *"Walk me through attention."* — Q/K/V, the scaled dot-product formula, why scaling matters, why causal masking uses `-∞`, and the concrete shape trace from `[batch, seq_len, 128]` through to `[batch, seq_len, seq_len]` and back.
-- *"What broke during this project, and how did you find it?"* — the PGN parsing edge case (fixed by switching to a proper parser), the BPE training performance trap (fixed by word-frequency deduplication), the CPU/GPU device mismatch bug (only surfaced on real GPU testing).
-- *"How do you know the model is actually learning anything?"* — the `ln(vocab_size)` sanity check on initial loss, the loss curve trend, and the independent legality-rate evaluation as a second, non-loss-based signal.
-- *"What would you do with more time/compute?"* — bigger model, more training steps and data (all cheap, proven-to-help levers per the 5K vs. 10K comparison above), and discussing constrained decoding as a known but deliberately-excluded technique for the core evaluation.
