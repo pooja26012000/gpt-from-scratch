@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPT-Chess-From-Scratch — a transformer that learned chess notation</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="#top">gpt<span>chess</span>.fromscratch</a>
+  <a class="gh" href="https://github.com/pooja26012000/gpt-from-scratch" target="_blank">View source →</a>
+</nav>
+
+<header class="hero" id="top">
+  <div class="inner">
+    <span class="status-line">model_loaded — vocab=1534 — params=1.2M — device=cpu</span>
+    <h1>A transformer that learned chess<br>the same way it learns language.</h1>
+    <p class="tag">No search. No rules engine. No lookahead. Just a GPT-style model, built from raw matrix math, predicting one move at a time from patterns it saw in 15,000 human games.</p>
+  </div>
+</header>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="demo-grid">
+
+      <div class="board-card">
+        <div id="board"></div>
+        <div class="playback">
+            <div class="btn-group">
+                <button id="btnBack" disabled>⟲ prev</button>
+                <button id="btnPlay" disabled>▶ play</button>
+                <button id="btnFwd" disabled>next ⟳</button>
+            </div>
+            <div class="speed-control">
+                <label for="speed">Playback speed</label>
+                <input type="range" id="speed" min="200" max="1600" value="700" step="100">
+            </div>
+        </div>
+        <div class="flag" id="illegalFlag"></div>
+      </div>
+
+      <div class="side-col">
+        <div class="panel">
+          <h3>Generate a game</h3>
+          <div class="field">
+            <label for="prompt">Opening prompt</label>
+            <input type="text" id="prompt" value="1. e4">
+          </div>
+          <div class="field">
+            <label for="strategy">Sampling strategy</label>
+            <select id="strategy">
+              <option value="top_k" selected>Top-k (most reliable)</option>
+              <option value="top_p">Top-p (nucleus)</option>
+              <option value="temperature">Temperature (raw sampling)</option>
+              <option value="greedy">Greedy (deterministic)</option>
+            </select>
+          </div>
+          <div class="field" id="tempField">
+            <label for="temperature">Temperature <span class="val" id="tempVal">1.0</span></label>
+            <input type="range" id="temperature" min="0.1" max="1.8" step="0.1" value="1.0">
+          </div>
+          <div class="field" id="kField">
+            <label for="k">Top-k pool size <span class="val" id="kVal">10</span></label>
+            <input type="range" id="k" min="2" max="40" step="1" value="10">
+          </div>
+          <div class="field" id="pField" style="display:none;">
+            <label for="p">Top-p threshold <span class="val" id="pVal">0.9</span></label>
+            <input type="range" id="p" min="0.5" max="0.99" step="0.01" value="0.9">
+          </div>
+          <button class="generate-btn" id="btnGenerate">Generate game</button>
+        </div>
+
+        <div class="scoresheet">
+          <div class="scoresheet-head"><span>#</span><span>White</span><span>Black</span></div>
+          <div id="scoresheetBody">
+            <div class="empty-note">Generate a game to see the scoresheet fill in here.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="stats">
+  <div class="wrap">
+    <div class="stat-strip">
+      <div class="stat-card"><div class="num">1.2M</div><div class="lbl">parameters</div></div>
+      <div class="stat-card"><div class="num">10,000</div><div class="lbl">training steps</div></div>
+      <div class="stat-card"><div class="num">1,534</div><div class="lbl">vocabulary size</div></div>
+      <div class="stat-card"><div class="num">70.95%</div><div class="lbl">best legal-move rate (top-k)</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it actually works</h2>
+    <p class="sub">The same core mechanism as GPT — just trained on move notation instead of prose.</p>
+    <div class="steps">
+      <div class="step"><div class="marker">1</div><h3>Custom BPE tokenizer</h3><p>15,000 real Lichess games, headers stripped, compressed into <code>1,534</code> learned tokens via byte-pair encoding built from scratch — no <code>tiktoken</code>, no pretrained vocab.</p></div>
+      <div class="step"><div class="marker">2</div><h3>Embeddings</h3><p>Each token gets a learned vector for <em>what</em> it is, plus a learned vector for <em>where</em> it sits in the sequence.</p></div>
+      <div class="step"><div class="marker">3</div><h3>Causal self-attention</h3><p>Four heads, each computing <code>softmax(QKᵀ/√d)·V</code> by hand — every token attends only to itself and earlier tokens, never the future.</p></div>
+      <div class="step"><div class="marker">4</div><h3>Feed-forward + residuals</h3><p>Four stacked transformer blocks, each with a per-token MLP, Pre-LN layer norm, and residual connections — exactly like GPT-2's architecture, at 1/100th the scale.</p></div>
+      <div class="step"><div class="marker">5</div><h3>Sampling</h3><p>Greedy, temperature, top-k, and top-p decoding — each trading determinism for variety differently, measured for legal-move rate against a real chess rules engine.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>Built from scratch — PyTorch model, FastAPI backend on Cloud Run, this page on Vercel.</div>
+  <div class="stack">github.com/pooja26012000/gpt-from-scratch</div>
+</footer>
+
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.13.4/chess.min.js"></script> -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="script.js"></script>
+
+</body>
+</html>
